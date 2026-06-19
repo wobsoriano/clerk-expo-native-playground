@@ -1,7 +1,16 @@
-import { useAuth, useClerk } from '@clerk/expo'
+import { useAuth, useClerk, useSignIn } from '@clerk/expo'
 import { AuthView, UserButton, UserProfileView } from '@clerk/expo/native'
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 
 import { EventLog } from '../components/EventLog'
 import { logEvent } from '../lib/testLog'
@@ -16,6 +25,7 @@ export default function MainScreen() {
   const [fullscreenAuth, setFullscreenAuth] = useState(false)
   const [profileModal, setProfileModal] = useState(false)
   const [plainModal, setPlainModal] = useState(false)
+  const [jsSignInModal, setJsSignInModal] = useState(false)
 
   // --- instrumentation: log every auth-state transition with timing ---
   const prevLoaded = useRef(false)
@@ -102,6 +112,14 @@ export default function MainScreen() {
             <Text style={styles.groupLabel}>AuthView tests</Text>
 
             <Btn
+              label="0. JS sign-in with email/password"
+              hint="JS-owned sign-in; native UserButton should hydrate after success"
+              onPress={() => {
+                logEvent('open JS sign-in modal')
+                setJsSignInModal(true)
+              }}
+            />
+            <Btn
               label="1. AuthView in Modal (default props)"
               hint="expect an X / dismiss button (default isDismissible=true)"
               onPress={() => {
@@ -179,6 +197,14 @@ export default function MainScreen() {
         </View>
       </Modal>
 
+      <JsSignInModal
+        visible={jsSignInModal}
+        onClose={() => setJsSignInModal(false)}
+        onPendingAction={action => {
+          pendingAction.current = action
+        }}
+      />
+
       {/* Plain isolation modal: no Clerk native view, same presentation as the others */}
       <Modal
         visible={plainModal}
@@ -220,19 +246,139 @@ export default function MainScreen() {
   )
 }
 
+function JsSignInModal({
+  visible,
+  onClose,
+  onPendingAction,
+}: {
+  visible: boolean
+  onClose: () => void
+  onPendingAction: (action: { label: string; at: number }) => void
+}) {
+  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false })
+  const { signIn, fetchStatus, errors } = useSignIn()
+  const [emailAddress, setEmailAddress] = useState('rob+clerk_test@example.com')
+  const [password, setPassword] = useState('@Thecanary01')
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (visible && isLoaded && isSignedIn) {
+      onClose()
+    }
+  }, [isLoaded, isSignedIn, onClose, visible])
+
+  const onSubmit = async () => {
+    if (!signIn) {
+      return
+    }
+
+    setFormError(null)
+    onPendingAction({ label: 'JS signIn.password()', at: Date.now() })
+    logEvent('▶ JS signIn.password() called')
+
+    try {
+      const result = await signIn.password({
+        emailAddress,
+        password,
+      })
+
+      if (result.error) {
+        setFormError(result.error.message)
+        logEvent(`JS sign-in failed: ${result.error.message}`)
+        return
+      }
+
+      if (signIn.status === 'complete') {
+        logEvent('JS sign-in complete -> finalize()')
+        await signIn.finalize()
+        onClose()
+        return
+      }
+
+      const status = signIn.status ?? 'unknown'
+      setFormError(`Sign-in status: ${status}`)
+      logEvent(`JS sign-in not complete: ${status}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setFormError(message)
+      logEvent(`JS sign-in threw: ${message}`)
+    }
+  }
+
+  const isSubmitting = fetchStatus === 'fetching'
+  const canSubmit = Boolean(emailAddress && password && !isSubmitting)
+
+  return (
+    <Modal
+      visible={visible}
+      presentationStyle="pageSheet"
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.jsSignInContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>JS sign-in</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={styles.modalClose}>Close</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.hint}>Use an email/password account. After success, confirm the native UserButton appears.</Text>
+
+        <Text style={styles.inputLabel}>Email address</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          onChangeText={setEmailAddress}
+          placeholder="person@example.com"
+          style={styles.input}
+          value={emailAddress}
+        />
+        {errors.fields.identifier ? <Text style={styles.errorText}>{errors.fields.identifier.message}</Text> : null}
+
+        <Text style={styles.inputLabel}>Password</Text>
+        <TextInput
+          autoCapitalize="none"
+          onChangeText={setPassword}
+          placeholder="Password"
+          secureTextEntry
+          style={styles.input}
+          value={password}
+        />
+        {errors.fields.password ? <Text style={styles.errorText}>{errors.fields.password.message}</Text> : null}
+        {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
+
+        <Btn
+          label={isSubmitting ? 'Signing in...' : 'Sign in with JS'}
+          hint="calls useSignIn().password()"
+          onPress={onSubmit}
+          disabled={!canSubmit}
+        />
+      </View>
+    </Modal>
+  )
+}
+
 function Btn({
   label,
   hint,
   onPress,
   danger,
+  disabled,
 }: {
   label: string
   hint?: string
   onPress: () => void
   danger?: boolean
+  disabled?: boolean
 }) {
   return (
-    <TouchableOpacity style={[styles.btn, danger && styles.btnDanger]} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.btn, danger && styles.btnDanger, disabled && styles.btnDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <Text style={styles.btnText}>{label}</Text>
       {hint ? <Text style={styles.btnHint}>{hint}</Text> : null}
     </TouchableOpacity>
@@ -255,7 +401,22 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: '#888' },
   btn: { backgroundColor: '#007AFF', padding: 14, borderRadius: 10 },
   btnDanger: { backgroundColor: '#c0392b' },
+  btnDisabled: { opacity: 0.45 },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   btnHint: { color: '#e8f0ff', fontSize: 11, marginTop: 3 },
   logBox: { height: 260, marginTop: 16 },
+  jsSignInContainer: { flex: 1, backgroundColor: '#fff', gap: 10, padding: 20, paddingTop: 64 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  modalTitle: { fontSize: 24, fontWeight: '700' },
+  modalClose: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
+  inputLabel: { color: '#333', fontSize: 13, fontWeight: '700', marginTop: 8 },
+  input: {
+    backgroundColor: '#fff',
+    borderColor: '#ccc',
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 16,
+    padding: 12,
+  },
+  errorText: { color: '#c0392b', fontSize: 12 },
 })
