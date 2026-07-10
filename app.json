@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.yourapp"
+      "bundleIdentifier": "com.clerk.testing"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +17,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.yourcompany.yourapp"
+      "package": "com.clerk.testing"
     },
     "web": {
       "output": "static",
@@ -28,9 +28,7 @@
       "expo-secure-store",
       [
         "@clerk/expo",
-        {
-          "theme": "./clerk-theme.json"
-        }
+        {}
       ],
       [
         "expo-splash-screen",

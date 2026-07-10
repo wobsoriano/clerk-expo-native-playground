@@ -20,12 +20,13 @@ type AuthModal = 'none' | 'default' | 'required'
 export default function MainScreen() {
   const { isSignedIn, isLoaded, userId, sessionId } = useAuth({ treatPendingAsSignedOut: false })
   const { signOut } = useClerk()
+  // const { startGoogleAuthenticationFlow } = useSignInWithGoogle()
 
   const [authModal, setAuthModal] = useState<AuthModal>('none')
   const [fullscreenAuth, setFullscreenAuth] = useState(false)
   const [profileModal, setProfileModal] = useState(false)
-  const [plainModal, setPlainModal] = useState(false)
   const [jsSignInModal, setJsSignInModal] = useState(false)
+  const [googleSignInLoading, setGoogleSignInLoading] = useState(false)
 
   // --- instrumentation: log every auth-state transition with timing ---
   const prevLoaded = useRef(false)
@@ -97,16 +98,6 @@ export default function MainScreen() {
         <Text style={styles.mono}>userId: {userId ?? '-'}</Text>
         <Text style={styles.mono}>sessionId: {sessionId ?? '-'}</Text>
 
-        <Text style={styles.groupLabel}>Isolation test (no Clerk view)</Text>
-        <Btn
-          label="Open PLAIN modal (same pageSheet)"
-          hint="close it: if app still freezes, it's the RN Modal, not Clerk"
-          onPress={() => {
-            logEvent('open PLAIN modal (no clerk view)')
-            setPlainModal(true)
-          }}
-        />
-
         {!isSignedIn ? (
           <View style={styles.group}>
             <Text style={styles.groupLabel}>AuthView tests</Text>
@@ -120,7 +111,7 @@ export default function MainScreen() {
               }}
             />
             <Btn
-              label="1. AuthView in Modal (default props)"
+              label="2. AuthView in Modal (default props)"
               hint="expect an X / dismiss button (default isDismissible=true)"
               onPress={() => {
                 logEvent('open AuthView modal (default props)')
@@ -128,7 +119,7 @@ export default function MainScreen() {
               }}
             />
             <Btn
-              label="2. AuthView in Modal (isDismissible={false})"
+              label="3. AuthView in Modal (isDismissible={false})"
               hint="expect NO dismiss button"
               onPress={() => {
                 logEvent('open AuthView modal (isDismissible=false)')
@@ -136,7 +127,7 @@ export default function MainScreen() {
               }}
             />
             <Btn
-              label="3. AuthView fullscreen (required)"
+              label="4. AuthView fullscreen (required)"
               hint="root/required auth, cannot dismiss"
               onPress={() => {
                 logEvent('show AuthView fullscreen (required)')
@@ -204,27 +195,6 @@ export default function MainScreen() {
           pendingAction.current = action
         }}
       />
-
-      {/* Plain isolation modal: no Clerk native view, same presentation as the others */}
-      <Modal
-        visible={plainModal}
-        presentationStyle="pageSheet"
-        animationType="slide"
-        onRequestClose={() => setPlainModal(false)}
-      >
-        <View style={[styles.flex, styles.centered]}>
-          <Text style={{ fontSize: 18, marginBottom: 20 }}>Plain modal (no Clerk view)</Text>
-          <TouchableOpacity
-            style={styles.btn}
-            onPress={() => {
-              logEvent('PLAIN modal close pressed')
-              setPlainModal(false)
-            }}
-          >
-            <Text style={styles.btnText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
 
       {/* UserProfileView modal */}
       <Modal
